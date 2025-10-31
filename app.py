@@ -289,7 +289,7 @@ def teacher_dashboard():
             st.success("✅ Session Active")
             
             # Generate QR code URL
-            base_url = st.secrets.get("base_url", "http://localhost:8501")
+            base_url = st.secrets.get("base_url", "https://esa-attendance.streamlit.app") # http://localhost:8501
             qr_url = f"{base_url}?session={st.session_state.session_id}&mode=student"
             
             # Create QR code
