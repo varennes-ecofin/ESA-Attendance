@@ -131,23 +131,65 @@ STUDENTS_BY_YEAR = {
     ],
 }
 
-# Try to load private student data from local file (not committed to GitHub)
+# Try to load student data from local file (not committed to GitHub)
 # This allows you to keep emails private while committing names publicly
+# Supported formats: JSON, CSV, Excel (.xlsx, .xls)
 try:
     import os
     import json
     
-    private_data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'students_private.json')
-    if os.path.exists(private_data_path):
-        with open(private_data_path, 'r', encoding='utf-8') as f:
+    data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+    
+    # Try JSON first (format: {"M1": [...], "M2": [...]})
+    json_path = os.path.join(data_dir, 'students_private.json')
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
             PRIVATE_STUDENTS = json.load(f)
-            # Merge private data (with emails) into public data
-            # Expected format: {"M1": [...], "M2": [...]}
             for year, students in PRIVATE_STUDENTS.items():
                 if year in STUDENTS_BY_YEAR:
                     STUDENTS_BY_YEAR[year] = students
                 else:
                     STUDENTS_BY_YEAR[year] = students
+    
+    # Try Excel or CSV (format: columns 'year', 'id', 'name', 'email')
+    else:
+        import pandas as pd
+        
+        # Check for Excel files
+        excel_extensions = ['students.xlsx', 'students.xls', 'students_private.xlsx', 'students_private.xls']
+        csv_extensions = ['students.csv', 'students_private.csv']
+        
+        loaded = False
+        for filename in excel_extensions + csv_extensions:
+            file_path = os.path.join(data_dir, filename)
+            if os.path.exists(file_path):
+                # Load file based on extension
+                if filename.endswith('.csv'):
+                    df = pd.read_csv(file_path, encoding='utf-8')
+                else:
+                    df = pd.read_excel(file_path)
+                
+                # Reset STUDENTS_BY_YEAR to avoid duplicates
+                STUDENTS_BY_YEAR = {"M1": [], "M2": []}
+                
+                # Convert dataframe to the expected format
+                for _, row in df.iterrows():
+                    year = str(row.get('year', '')).strip()
+                    if year in ['M1', 'M2']:
+                        student = {
+                            "id": str(row.get('id', '')),
+                            "name": str(row.get('name', '')),
+                            "email": str(row.get('email', ''))
+                        }
+                        STUDENTS_BY_YEAR[year].append(student)
+                
+                loaded = True
+                break
+        
+        if not loaded:
+            # No external file found, keep default values
+            pass
+            
 except Exception:
     # If loading fails, just use the public data above
     pass
