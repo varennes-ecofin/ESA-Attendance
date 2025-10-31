@@ -120,10 +120,10 @@ def student_checkin_page(session_id):
         You can close this window now.
         """)
         
-        if st.button("🔄 Check in another student"):
-            st.session_state.checked_in = False
-            st.session_state.selected_student = None
-            st.rerun()
+        # if st.button("🔄 Check in another student"):
+        #     st.session_state.checked_in = False
+        #     st.session_state.selected_student = None
+        #     st.rerun()
         
         st.stop()
         return
