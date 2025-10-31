@@ -16,16 +16,9 @@ class AttendanceDatabase:
     Manages sessions, attendance records, and real-time updates.
     """
     
-    def __init__(self):
-        """Initialize Supabase client from Streamlit secrets."""
-        try:
-            self.supabase: Client = create_client(
-                st.secrets["supabase"]["url"],
-                st.secrets["supabase"]["key"]
-            )
-        except Exception as e:
-            st.error(f"❌ Failed to connect to Supabase: {e}")
-            raise
+    def __init__(self, supabase_client: Client):
+        """Initialize with a pre-configured Supabase client."""
+        self.supabase = supabase_client
     
     
     # ========================================
@@ -36,14 +29,6 @@ class AttendanceDatabase:
                     teacher_username: str) -> bool:
         """
         Create a new attendance session.
-        
-        Args:
-            session_id: Unique session identifier
-            course_code: Course code (e.g., "ESA1AN01")
-            teacher_username: Username of the teacher creating the session
-            
-        Returns:
-            Success status
         """
         try:
             data = {
@@ -66,12 +51,6 @@ class AttendanceDatabase:
     def close_session(self, session_id: str) -> bool:
         """
         Close an active attendance session.
-        
-        Args:
-            session_id: Session to close
-            
-        Returns:
-            Success status
         """
         try:
             _result = self.supabase.table("attendance_sessions").update({
@@ -89,12 +68,6 @@ class AttendanceDatabase:
     def get_session(self, session_id: str) -> Optional[Dict]:
         """
         Get session details.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Session data or None if not found
         """
         try:
             result = self.supabase.table("attendance_sessions")\
@@ -114,12 +87,6 @@ class AttendanceDatabase:
     def is_session_active(self, session_id: str) -> bool:
         """
         Check if a session is currently active.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            True if session is active
         """
         session = self.get_session(session_id)
         return session and session.get("status") == "active"
@@ -133,14 +100,6 @@ class AttendanceDatabase:
                         student_name: str) -> Tuple[bool, str]:
         """
         Record a student's attendance.
-        
-        Args:
-            session_id: Session identifier
-            student_id: Student ID
-            student_name: Student name
-            
-        Returns:
-            Tuple of (success, message)
         """
         try:
             # Check if session is active
@@ -175,12 +134,6 @@ class AttendanceDatabase:
     def get_session_attendance(self, session_id: str) -> List[Dict]:
         """
         Get all attendance records for a session.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            List of attendance records
         """
         try:
             result = self.supabase.table("attendance_records")\
@@ -199,12 +152,6 @@ class AttendanceDatabase:
     def get_attendance_count(self, session_id: str) -> int:
         """
         Get the count of students who checked in.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Number of students checked in
         """
         attendance = self.get_session_attendance(session_id)
         return len(attendance)
@@ -213,12 +160,6 @@ class AttendanceDatabase:
     def get_attendance_dataframe(self, session_id: str) -> pd.DataFrame:
         """
         Get attendance records as a pandas DataFrame for display.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            DataFrame with columns: Student Name, Check-in Time
         """
         attendance = self.get_session_attendance(session_id)
         
@@ -244,16 +185,9 @@ class AttendanceDatabase:
     # ========================================
     
     def get_teacher_sessions(self, teacher_username: str, 
-                           limit: int = 10) -> List[Dict]:
+                            limit: int = 10) -> List[Dict]:
         """
         Get recent sessions for a teacher.
-        
-        Args:
-            teacher_username: Teacher's username
-            limit: Maximum number of sessions to return
-            
-        Returns:
-            List of session records
         """
         try:
             result = self.supabase.table("attendance_sessions")\
@@ -273,12 +207,6 @@ class AttendanceDatabase:
     def get_course_statistics(self, course_code: str) -> Dict:
         """
         Get statistics for a course across all sessions.
-        
-        Args:
-            course_code: Course code
-            
-        Returns:
-            Dictionary with statistics
         """
         try:
             # Get all sessions for this course
@@ -320,12 +248,6 @@ class AttendanceDatabase:
     def export_session_to_csv(self, session_id: str) -> Optional[str]:
         """
         Export session attendance to CSV format.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            CSV string or None if error
         """
         try:
             df = self.get_attendance_dataframe(session_id)
@@ -343,12 +265,6 @@ class AttendanceDatabase:
     def get_session_summary(self, session_id: str) -> Dict:
         """
         Get a complete summary of a session for email/export.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Dictionary with session summary
         """
         try:
             session = self.get_session(session_id)
@@ -380,16 +296,35 @@ class AttendanceDatabase:
 
 
 # ========================================
-# SINGLETON INSTANCE
+# SINGLETON INSTANCES
 # ========================================
+# (Modifié pour gérer deux types de clients : anon et service)
+
+def _get_supabase_client(role: str = 'anon') -> Client:
+    """Crée un client Supabase basé sur le rôle."""
+    url = st.secrets["supabase"]["url"]
+    
+    if role == 'service':
+        key = st.secrets["supabase"]["service_key"]
+    else:
+        key = st.secrets["supabase"]["key"]
+        
+    if not url or not key:
+        raise ValueError(f"Supabase URL or Key not found for role '{role}'")
+        
+    return create_client(url, key)
 
 @st.cache_resource
-def get_database() -> AttendanceDatabase:
+def get_service_db() -> AttendanceDatabase:
     """
-    Get or create a singleton database instance.
-    Uses Streamlit's cache to maintain a single connection.
-    
-    Returns:
-        AttendanceDatabase instance
+    Get or create a singleton database instance for SERVICE ROLE (admin).
     """
-    return AttendanceDatabase()
+    return AttendanceDatabase(_get_supabase_client('service'))
+
+@st.cache_resource
+def get_anon_db() -> AttendanceDatabase:
+    """
+    Get or create a singleton database instance for ANON ROLE (public).
+    """
+    return AttendanceDatabase(_get_supabase_client('anon'))
+
