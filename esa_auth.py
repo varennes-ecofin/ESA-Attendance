@@ -57,6 +57,15 @@ def login_form() -> bool:
     Returns:
         True if authentication successful, False otherwise
     """
+    
+    # Display ESA logo banner
+    logo_url = "https://raw.githubusercontent.com/varennes-ecofin/ESA-Attendance/main/data/ESALogoNewWebLightBG-02.png"
+    st.markdown(f"""
+    <div style='text-align: center; padding: 1rem 0;'>
+        <img src='{logo_url}' style='max-width: 500px; width: 100%; height: auto;'>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("""
     <div style='text-align: center; padding: 2rem 0;'>
         <h1>🎓 ESA Attendance System</h1>
@@ -216,9 +225,8 @@ if __name__ == "__main__":
     
     # Example teachers
     teachers = [
-        ("prof.dupont", "SecurePass123!"),
-        ("prof.martin", "AnotherSecure456!"),
-        ("admin", "AdminPassword789!")
+        ("admin", "ESAadmin"),
+        ("intervenant", "ESAteacher")
     ]
     
     print("Copy these lines to your .streamlit/secrets.toml file:\n")
