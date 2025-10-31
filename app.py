@@ -17,7 +17,8 @@ import time
 import esa_auth
 
 # Import database module
-from utils.database import get_database
+# from utils.database import get_database
+from utils.database import get_service_db, get_anon_db
 
 # Import your existing functions
 try:
@@ -58,10 +59,20 @@ def student_checkin_page(session_id):
     Args:
         session_id: Active attendance session ID
     """
-    st.title("🎓 ESA Attendance - Student Check-in")
+    
+    # Display ESA logo (small)
+    logo_url = "https://raw.githubusercontent.com/varennes-ecofin/ESA-Attendance/main/data/ESALogoNewWebLightBG-02.png"
+    st.markdown(f"""
+    <div style='text-align: center; padding: 0.5rem 0;'>
+        <img src='{logo_url}' style='max-width: 300px; width: 100%; height: auto;'>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.title("🎓 ESA Attendance - Student Check-in")   
     
     # Get database instance
-    db = get_database()
+    # db = get_database()
+    db = get_anon_db()
     
     if not session_id:
         st.error("❌ Invalid session. Please scan the QR code again.")
@@ -206,13 +217,23 @@ def teacher_dashboard():
     esa_auth.display_user_info()
     
     # Get database instance
-    db = get_database()
+    # db = get_database()
+    db = get_service_db()
     
     # ========================================
     # TEACHER DASHBOARD
     # ========================================
     
+    # Display ESA logo (small)
+    logo_url = "https://raw.githubusercontent.com/varennes-ecofin/ESA-Attendance/main/data/ESALogoNewWebLightBG-02.png"
+    st.markdown(f"""
+    <div style='text-align: center; padding: 0.5rem 0;'>
+        <img src='{logo_url}' style='max-width: 300px; width: 100%; height: auto;'>
+    </div>
+    """, unsafe_allow_html=True) 
+    
     st.title("🎓 ESA Attendance System - Teacher Dashboard")
+    
     
     # Get authenticated username
     _, username = esa_auth.check_authentication()
@@ -289,7 +310,8 @@ def teacher_dashboard():
             st.success("✅ Session Active")
             
             # Generate QR code URL
-            base_url = st.secrets.get("base_url", "https://esa-attendance.streamlit.app") # http://localhost:8501
+            # base_url = st.secrets.get("base_url", "https://esa-attendance.streamlit.app") # http://localhost:8501
+            base_url = st.secrets.get("base_url", "http://localhost:8501")
             qr_url = f"{base_url}?session={st.session_state.session_id}&mode=student"
             
             # Create QR code
@@ -408,7 +430,7 @@ def teacher_dashboard():
             
             # Show statistics
             st.markdown("---")
-            st.subheader("📊 Course Statistics")
+            st.subheader("📊 Overall Statistics")
             stats = db.get_course_statistics(selected_course)
             if stats.get('total_sessions', 0) > 0:
                 col_a, col_b, col_c = st.columns(3)
@@ -417,6 +439,107 @@ def teacher_dashboard():
                 col_c.metric("Avg per Session", f"{stats['average_attendance']:.1f}")
             else:
                 st.info("No sessions yet for this course")
+                
+            # Display statistics table for all courses
+            st.markdown("---")
+            st.subheader("📊 Courses Statistics")
+            
+            # Get statistics for all courses
+            all_stats = get_all_courses_statistics(db)
+            
+            if all_stats:
+                # Create DataFrame for better display
+                import pandas as pd
+                df_stats = pd.DataFrame(all_stats)
+                
+                # Sort by year and course code
+                df_stats = df_stats.sort_values(['year', 'course_code'])
+                
+                # Format for display
+                df_display = pd.DataFrame({
+                    'Course Code': df_stats['course_code'],
+                    'Course Name': df_stats['course_name'],
+                    'Year': df_stats['year'],
+                    'Sessions': df_stats['num_sessions'],
+                    'Avg Participation Rate': df_stats['participation_rate'].apply(lambda x: f"{x:.1f}%")
+                })
+                
+                # Display table
+                st.dataframe(
+                    df_display,
+                    hide_index=True,
+                    width='stretch'
+                )
+                
+                st.caption(f"📈 Showing statistics for {len(all_stats)} courses with attendance data")
+            else:
+                st.info("No courses with attendance data yet")
+
+
+def get_all_courses_statistics(db):
+    """
+    Get statistics for all courses with attendance data.
+    
+    Args:
+        db: Database instance
+        
+    Returns:
+        List of dictionaries containing course statistics
+    """
+    from utils.courses import COURSES, get_students
+    
+    stats_list = []
+    
+    for course_code, course_info in COURSES.items():
+        # Get all sessions for this course
+        try:
+            sessions = db.supabase.table("attendance_sessions")\
+                .select("session_id")\
+                .eq("course_code", course_code)\
+                .execute()
+            
+            num_sessions = len(sessions.data) if sessions.data else 0
+            
+            if num_sessions == 0:
+                # Skip courses without sessions
+                continue
+            
+            # Get total attendance across all sessions
+            total_attendance = 0
+            session_ids = [s['session_id'] for s in sessions.data]
+            
+            for session_id in session_ids:
+                attendance = db.supabase.table("attendance_records")\
+                    .select("id", count="exact")\
+                    .eq("session_id", session_id)\
+                    .execute()
+                total_attendance += len(attendance.data) if attendance.data else 0
+            
+            # Calculate average participation rate
+            students = get_students(course_code)
+            num_students = len(students) if students else 0
+            
+            if num_students > 0 and num_sessions > 0:
+                # Average attendance per session
+                avg_attendance_per_session = total_attendance / num_sessions
+                # Participation rate as percentage
+                participation_rate = (avg_attendance_per_session / num_students) * 100
+            else:
+                participation_rate = 0
+            
+            stats_list.append({
+                'course_code': course_code,
+                'course_name': course_info['name'],
+                'year': course_info['year'],
+                'num_sessions': num_sessions,
+                'participation_rate': participation_rate
+            })
+            
+        except Exception:
+            # Skip courses with errors
+            continue
+    
+    return stats_list
 
 
 def main():
