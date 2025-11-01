@@ -475,10 +475,11 @@ def teacher_dashboard():
             else:
                 st.info("No courses with attendance data yet")
 
-
-def get_all_courses_statistics(db):
+@st.cache_data(ttl=3600)
+def get_all_courses_statistics(_db):
     """
     Get statistics for all courses with attendance data.
+    (Mise en cache pour 1 heure (3600s) pour éviter les recalculs constants)
     
     Args:
         db: Database instance
@@ -493,7 +494,7 @@ def get_all_courses_statistics(db):
     for course_code, course_info in COURSES.items():
         # Get all sessions for this course
         try:
-            sessions = db.supabase.table("attendance_sessions")\
+            sessions = _db.supabase.table("attendance_sessions")\
                 .select("session_id")\
                 .eq("course_code", course_code)\
                 .execute()
@@ -509,7 +510,7 @@ def get_all_courses_statistics(db):
             session_ids = [s['session_id'] for s in sessions.data]
             
             for session_id in session_ids:
-                attendance = db.supabase.table("attendance_records")\
+                attendance = _db.supabase.table("attendance_records")\
                     .select("id", count="exact")\
                     .eq("session_id", session_id)\
                     .execute()
