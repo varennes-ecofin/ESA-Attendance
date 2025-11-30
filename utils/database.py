@@ -20,7 +20,20 @@ class AttendanceDatabase:
         """Initialize with a pre-configured Supabase client."""
         self.supabase = supabase_client
     
-    
+    def keep_alive(self) -> bool:
+        """
+        Effectue une requête légère pour maintenir la base active.
+        Ne modifie pas les données réelles.
+        """
+        try:
+            # On demande juste le nombre de sessions, c'est une requête API valide
+            self.supabase.table("attendance_sessions").select("session_id", count="exact").limit(1).execute()
+            return True
+        except Exception as e:
+            st.error(f"Erreur de ping: {e}")
+            return False
+        
+        
     # ========================================
     # SESSION MANAGEMENT
     # ========================================
@@ -327,4 +340,3 @@ def get_anon_db() -> AttendanceDatabase:
     Get or create a singleton database instance for ANON ROLE (public).
     """
     return AttendanceDatabase(_get_supabase_client('anon'))
-
