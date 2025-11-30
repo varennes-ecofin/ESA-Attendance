@@ -267,6 +267,14 @@ def teacher_dashboard():
                     st.write(f"{status_emoji} {sess['course_code']} - {sess['started_at'][:10]}")
             else:
                 st.info("No recent sessions")
+                
+        st.markdown("---")
+        st.subheader("🔧 Maintenance")
+        if st.button("📡 Ping Base de Données", help="Cliquez ici une fois par semaine pour empêcher Supabase de mettre la base en pause."):
+            if db.keep_alive():
+                st.toast("✅ Base de données pingée avec succès !", icon="🚀")
+            else:
+                st.toast("❌ Échec du ping.", icon="⚠️")
     
     # Main content area
     col1, col2 = st.columns([1, 2])
