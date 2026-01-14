@@ -61,6 +61,7 @@ COURSES = {
     "ESA2SE01": {"name": "Séminaire Fraude Financière", "year": "M2"},
     "ESA2SE02": {"name": "Séminaire SAS", "year": "M2"},
     "ESA2FI05": {"name": "Techniques de Modélisation pour l'ALM", "year": "M2"},
+    "ESA_MAINTENANCE": {"name": "Maintenance Système (Ne pas supprimer)", "year": "SYS"},
 }
 
 # Student data organized by year
