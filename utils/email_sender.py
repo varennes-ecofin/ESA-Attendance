@@ -8,20 +8,28 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import streamlit as st
 
-def send_attendance_email(recipient: str, course_name: str, date: str, students: list) -> bool:
+def send_attendance_email(recipient, course_name, date, students) -> bool:
     """
     Send attendance list by email
     
     Args:
-        recipient: Email address of the recipient
+        recipient: Email address(es) (str or list of str)
         course_name: Name of the course
         date: Date of the session
-        students: List of dictionaries with student info {'name': str, 'time': str}
-        
-    Returns:
-        Success status
+        students: List of dictionaries with student info
     """
     try:
+        # Configuration des destinataires
+        # Si c'est une liste (config toml avec []), on la joint pour l'affichage
+        # Sinon on la traite comme une chaîne unique
+        if isinstance(recipient, list):
+            recipients_str = ", ".join(recipient) # Pour l'entête "To:" (joli affichage)
+            recipients_list = recipient           # Pour l'envoi SMTP (liste technique)
+        else:
+            recipients_str = recipient
+            # On gère le cas où l'utilisateur aurait mis "mail1, mail2" dans une string
+            recipients_list = [r.strip() for r in recipient.split(",")]
+
         # Get email configuration from secrets
         sender_email = st.secrets["email"]["sender"]
         sender_password = st.secrets["email"]["password"]
@@ -32,9 +40,10 @@ def send_attendance_email(recipient: str, course_name: str, date: str, students:
         message = MIMEMultipart("alternative")
         message["Subject"] = f"Attendance List - {course_name} - {date}"
         message["From"] = sender_email
-        message["To"] = recipient
+        message["To"] = recipients_str  # Affiche "mail1, mail2" proprement
         
-        # Create HTML content
+        # ... (Le reste du contenu HTML ne change pas) ...
+        # (Copiez ici la partie création du HTML_content existante)
         html_content = f"""
         <html>
             <head>
@@ -69,7 +78,6 @@ def send_attendance_email(recipient: str, course_name: str, date: str, students:
                         <tbody>
         """
         
-        # Add student rows
         for idx, student in enumerate(students, 1):
             check_time = datetime.fromisoformat(student['time']).strftime('%H:%M:%S')
             html_content += f"""
@@ -101,7 +109,8 @@ def send_attendance_email(recipient: str, course_name: str, date: str, students:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
             server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipient, message.as_string())
+            # sendmail attend une LISTE pour les destinataires
+            server.sendmail(sender_email, recipients_list, message.as_string())
         
         return True
         
