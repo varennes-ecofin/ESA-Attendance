@@ -27,4 +27,4 @@ jobs:
           # On garde l'ancienne au cas où, mais on ajoute la nouvelle
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }} 
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python maintenance.py  
+        run: python utils/maintenance.py
