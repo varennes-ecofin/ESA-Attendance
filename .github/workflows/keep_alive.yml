@@ -24,5 +24,7 @@ jobs:
       - name: Run maintenance script
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python utils/maintenance.py
+          # On garde l'ancienne au cas où, mais on ajoute la nouvelle
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }} 
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python maintenance.py  
