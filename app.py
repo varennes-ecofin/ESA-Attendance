@@ -20,6 +20,8 @@ import esa_auth
 # from utils.database import get_database
 from utils.database import get_service_db, get_anon_db
 
+from analytics_widget import render_assiduity_panel
+
 # Import your existing functions
 try:
     from utils.courses import get_courses, get_students
@@ -480,6 +482,8 @@ def teacher_dashboard():
                 )
                 
                 st.caption(f"📈 Showing statistics for {len(all_stats)} courses with attendance data")
+                
+                render_assiduity_panel()
             else:
                 st.info("No courses with attendance data yet")
 
