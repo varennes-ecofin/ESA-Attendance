@@ -1,250 +1,219 @@
-# 📋 ESA Attendance System
+# ESA Attendance
 
-A real-time attendance tracking system built with Streamlit for Master ESA courses but extendable to any formation. Students scan a QR code to check in, and professors see live updates of attendance and send the final report to the administration.
+Système d'appel par QR code pour le Master ESA (Économétrie et Statistique
+Appliquée), Université d'Orléans. L'enseignant ouvre une session depuis son
+tableau de bord, projette le QR code, et les étudiants émargent depuis leur
+téléphone. La liste se remplit en direct et peut être envoyée au secrétariat.
 
-## 🌟 Features
+Streamlit pour l'interface, Supabase (PostgreSQL) pour les données de présence,
+fichiers CSV pour le référentiel des étudiants et des cours.
 
-- ✅ **QR Code Generation**: Automatic QR code for easy student access
-- 📱 **Mobile-Friendly**: Students check in using their phones
-- ⚡ **Real-Time Updates**: Live attendance list updates every 3 seconds
-- 📧 **Email Notifications**: Send attendance lists automatically
-- 🔒 **Session Management**: Open/close attendance sessions
-- 📊 **Progress Tracking**: Visual progress bar for attendance completion
+## Comment ça fonctionne
 
-## 🚀 Quick Start (Local Development)
+1. L'enseignant se connecte, choisit un cours et ouvre une session d'appel.
+   Toute session qu'il aurait laissée ouverte est fermée au passage.
+2. Le QR code pointe vers `?mode=student&session=<id>`, page publique sans
+   authentification.
+3. L'étudiant sélectionne son nom dans la liste de sa promotion et confirme.
+   L'enregistrement passe par la fonction PostgreSQL `check_in()`, qui vérifie
+   que la session est active et refuse les doublons côté serveur.
+4. L'enseignant voit la liste se remplir, l'exporte en CSV ou l'envoie par mail,
+   puis ferme la session.
 
-### Prerequisites
+## Arborescence
 
-- Python 3.8+
-- Supabase account (free tier is sufficient)
-- Gmail account for sending emails
-
-### Installation
-
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/ESA-Attendance.git
-cd esa-attendance
+```
+app.py                      point d'entrée, navigation par rôle
+pyproject.toml              paquet esa-attendance (layout src/)
+requirements.txt            dépendances pour Streamlit Cloud
+sql/                        migrations à passer dans l'éditeur SQL Supabase
+scripts/                    utilitaires hors application
+src/esa_attendance/
+├── config.py               secrets → objet Settings typé
+├── auth.py                 hachage bcrypt, résolution des rôles
+├── data/repository.py      accès Supabase : sessions, présences, statistiques
+├── roster/                 référentiel CSV
+│   ├── models.py           Student, Course, diff, codes de cours
+│   ├── csv_io.py           lecture robuste, validation, sérialisation
+│   ├── store.py            stockage local ou bucket Supabase
+│   └── service.py          import, versionnement, année active
+├── services/               analytique d'assiduité, envoi de courriel
+└── ui/                     pages Streamlit
 ```
 
-2. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+## Installation locale
 
-3. **Set up Supabase database**
-   - Go to [supabase.com](https://supabase.com) and create a free account
-   - Create a new project
-   - Go to SQL Editor and run the contents of `database/schema.sql`
-   - Note your project URL and anon key from Settings > API
+Python 3.10 ou plus.
 
-4. **Configure secrets**
-   - Copy `.streamlit/secrets.toml.template` to `.streamlit/secrets.toml`
-   - Fill in your credentials:
-     ```toml
-     base_url = "http://localhost:8501"
-     
-     [supabase]
-     url = "https://your-project.supabase.co"
-     key = "your-supabase-anon-key"
-     
-     [email]
-     sender = "your-email@gmail.com"
-     password = "your-app-password"
-     smtp_server = "smtp.gmail.com"
-     smtp_port = 587
-     
-     recipient_email = "secretary@university.fr"
-     ```
-
-5. **Run the app before deployment**
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
 streamlit run app.py
 ```
 
-## 🌐 Deployment on Streamlit Cloud
+L'application doit être lancée **depuis la racine du projet** : le chemin du
+référentiel local est relatif au répertoire courant.
 
-### Step 1: Prepare Your Repository
+`pip install -e .` est facultatif — `app.py` ajoute `src/` au chemin
+d'import — mais recommandé en développement.
 
-1. Push your code to GitHub (exclude `.streamlit/secrets.toml`)
-2. Make sure `.gitignore` contains:
-   ```
-   .streamlit/secrets.toml
-   __pycache__/
-   *.pyc
-   .env
-   ```
+## Configuration
 
-### Step 2: Deploy to Streamlit Cloud
+Tout se trouve dans `.streamlit/secrets.toml`, jamais versionné.
 
-1. Go to [share.streamlit.io](https://share.streamlit.io)
-2. Click "New app"
-3. Connect your GitHub repository
-4. Select the repository and set:
-   - Main file path: `app.py`
-   - Python version: 3.9+
+```toml
+base_url = "https://esa-attendance.streamlit.app"   # ou http://localhost:8501
 
-### Step 3: Configure Secrets on Streamlit Cloud
+[supabase]
+url         = "https://xxxxx.supabase.co"
+key         = "…"   # clé anon, utilisée par la page étudiant
+service_key = "…"   # clé service_role, utilisée par les pages authentifiées
 
-In the Streamlit Cloud dashboard:
+[roster]
+backend   = "supabase"    # "local" en développement
+bucket    = "roster"      # bucket privé Supabase Storage
+local_dir = "data/roster" # utilisé quand backend = "local"
 
-1. Go to your app settings
-2. Click on "Secrets"
-3. Paste your secrets in TOML format:
-   ```toml
-   base_url = "https://your-app-name.streamlit.app"
-   
-   [supabase]
-   url = "https://your-project.supabase.co"
-   key = "your-supabase-anon-key"
-   
-   [email]
-   sender = "your-email@gmail.com"
-   password = "your-app-password"
-   smtp_server = "smtp.gmail.com"
-   smtp_port = 587
-   
-   recipient_email = "secretary@university.fr"
-   ```
-4. Save and your app will restart automatically
+[admins]
+secretariat = "$2b$12$…"  # accès au référentiel et à l'année universitaire
 
-### Step 4: Update Base URL
+[teachers]
+gdt = "$2b$12$…"          # accès à l'appel et à l'assiduité
 
-After deployment, update the `base_url` in secrets to match your app URL (e.g., `https://ESA-Attendance.streamlit.app`)
-
-## 📧 Gmail Configuration
-
-To send emails from Gmail:
-
-1. Enable 2-Factor Authentication on your Google account
-2. Generate an App Password:
-   - Go to Google Account > Security
-   - Under "2-Step Verification", click "App passwords"
-   - Generate a new app password for "Mail"
-   - Use this password in your secrets configuration
-
-## 📚 Usage Guide
-
-### For Professors
-
-1. **Start Session**
-   - Open the app
-   - Select your course from the dropdown
-   - Click "Start Attendance Session"
-
-2. **Display QR Code**
-   - Show the generated QR code on your projector/screen
-   - Students scan it with their phones
-
-3. **Monitor Attendance**
-   - Watch the real-time list of students checking in
-   - See progress bar fill up
-
-4. **Send Attendance List**
-   - Click "Send Attendance List" to email the results
-   - The secretary receives a formatted HTML email
-
-5. **Close Session**
-   - Click "Close Session" when done
-   - This prevents further check-ins
-
-### For Students
-
-1. Scan the QR code with your phone camera
-2. Select your name from the dropdown
-3. Click "Confirm Attendance"
-4. You'll see a confirmation message
-
-## 🛠️ Customization
-
-### Adding Courses
-
-Edit `utils/courses.py` and update the `COURSES` dictionary:
-
-```python
-COURSES = {
-    "YOURCOURSE": "Course Name",
-    # Add more courses
-}
+[email]
+sender          = "…"
+password        = "…"     # mot de passe d'application Gmail
+smtp_server     = "smtp.gmail.com"
+smtp_port       = 587
+recipient_email = ["secretariat@univ-orleans.fr"]
 ```
 
-### Adding Students
+Pour produire une empreinte de mot de passe :
 
-Option 1: Edit `utils/courses.py` manually
+```powershell
+python -m esa_attendance.auth 'le mot de passe'
+```
 
-Option 2: Import from CSV (plan to add this feature in admin panel)
+Les anciennes empreintes SHA-256 restent acceptées pour la transition, mais
+l'application signale qu'elles doivent être regénérées.
 
-### Changing Email Template
+**Après toute modification des secrets, redémarrer le serveur** : les valeurs
+sont mises en cache au premier import et un simple rechargement de page ne les
+relit pas.
 
-Edit the HTML template in `utils/email_sender.py`
+## Le référentiel
 
-## 📊 Database Schema
+Les étudiants et les cours vivent dans des CSV, pas en base. Le stockage est
+interchangeable : un dossier local en développement, un bucket privé Supabase
+Storage en production — le système de fichiers de Streamlit Cloud étant
+éphémère, un fichier téléversé et écrit sur disque y disparaîtrait au premier
+redémarrage.
 
-### Tables
+```
+manifest.json                         année active
+2026-2027/students.csv                academic_year, level, student_id, name
+2026-2027/courses.csv                 code, name, level, active
+2026-2027/backups/students-….csv      sauvegarde horodatée à chaque écriture
+```
 
-**sessions**
-- `session_id` (VARCHAR): Unique session identifier
-- `course_code` (VARCHAR): Course code
-- `status` (VARCHAR): 'active' or 'closed'
-- `created_at` (TIMESTAMP): Session creation time
+Aucune adresse électronique n'est conservée : l'application n'écrit jamais aux
+étudiants.
 
-**attendances**
-- `session_id` (VARCHAR): Links to sessions
-- `student_id` (VARCHAR): Student identifier
-- `checked_in_at` (TIMESTAMP): Check-in time
-- Unique constraint on (session_id, student_id)
+### Étudiants
 
-## 🔧 Troubleshooting
+L'import se fait **par niveau**, depuis le fichier d'inscription de la
+scolarité tel quel — l'en-tête est localisé même sous une ligne de titre, les
+colonnes de courriel sont ignorées, nom et prénom sont recomposés en
+« NOM Prénom ». M2 est connu tôt, M1 bouge jusqu'en octobre : remplacer une
+promotion ne touche pas l'autre.
 
-### QR Code Not Generating
-- Check that `qrcode` and `Pillow` are installed
-- Verify `base_url` is set correctly in secrets
+Un aperçu montre les arrivées, les sorties et les statuts d'inscription avant
+toute écriture. L'onglet d'édition gère les exceptions : inscription tardive,
+abandon, correction d'orthographe.
 
-### Database Connection Issues
-- Verify Supabase credentials
-- Check that SQL schema has been executed
-- Ensure RLS policies are set correctly
+Les identifiants sont attribués automatiquement (`m1_007`) et réattribués aux
+étudiants déjà présents, repérés par leur nom : un réimport en cours d'année ne
+renumérote personne et n'orpheline aucune présence.
 
-### Email Not Sending
-- Verify Gmail app password is correct
-- Check SMTP settings
-- Ensure 2FA is enabled on Google account
+### Cours
 
-### Auto-Refresh Not Working
-- This is expected behavior in Streamlit
-- The app uses `st.rerun()` with time.sleep(3)
-- Each professor session refreshes independently
+Le code d'un cours (`ESA1PR03`) est la clé qui relie les séances au catalogue.
+Il n'est donc jamais modifiable, et le code d'un cours supprimé n'est jamais
+réattribué. Retirer un cours de la maquette se fait en le **désactivant** : il
+quitte le menu des enseignants et reste lisible dans l'historique. L'interface
+refuse la suppression d'un code auquel des séances font référence.
 
-## 🔒 Security Considerations
+Un cours nouveau reçoit son code à partir du niveau et du domaine choisis
+(`ESA` + chiffre du niveau + deux lettres + numéro d'ordre).
 
-- Never commit `secrets.toml` to version control
-- Use environment variables or Streamlit secrets
-- In production, add authentication for professor view
-- Consider adding rate limiting for check-ins
-- Review Supabase RLS policies for your use case
+## Base de données
 
-## 📝 TODO / Future Enhancements
+Deux tables, `attendance_sessions` et `attendance_records`, chacune portant une
+colonne `academic_year` remplie par déclencheur. Les migrations sont dans
+`sql/`, à passer dans l'éditeur SQL Supabase, dans l'ordre :
 
-- [ ] Add admin panel for managing courses/students
-- [ ] Statistics dashboard
-- [ ] Multiple professor sessions simultaneously
-- [ ] Historical attendance reports
-- [ ] Mobile app version
+| Fichier | Rôle |
+|---|---|
+| `000_preflight.sql` | inspection en lecture seule, à passer d'abord |
+| `001_rollover_and_hardening.sql` | colonnes d'année, nettoyage, vues d'agrégation, `check_in()`, `purge_academic_year()` |
+| `002_rls_lockdown.sql` | verrouillage RLS — **casse l'ancien chemin d'émargement**, à passer une fois la v2 déployée |
 
-## 🤝 Contributing
+### Sécurité
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Le rôle `anon`, porté par la page publique, ne peut ni lire ni écrire dans
+`attendance_records` : seule la fonction `check_in()`, exécutée avec les droits
+du définisseur, y insère. Il ne voit des sessions que celles qui sont actives.
+Le rôle `service_role`, utilisé par les pages authentifiées, contourne RLS.
 
-## 📄 License
+Conséquence pratique : un ancien QR code ne permet plus rien une fois la
+session fermée.
 
-This project is open source and available under the MIT License.
+## Déploiement sur Streamlit Cloud
 
-## 👤 Contact
+Fichier principal `app.py`. Les secrets se collent dans les réglages de
+l'application, au format ci-dessus, avec `base_url` pointant sur l'URL du
+déploiement et `backend = "supabase"`.
 
-For questions or support, contact: [master.esa@univ-orleans.fr]
+Streamlit Cloud installe depuis `requirements.txt` sans exécuter
+`pip install .` : `app.py` ajoute `src/` au chemin d'import pour que le layout
+`src/` fonctionne quand même.
 
-## 🙏 Acknowledgments
+## Procédure de rentrée
 
-- Master ESA for the educational context
-- Streamlit for the amazing framework
-- Supabase for the database solution
+1. **Référentiel** → nouvelle année → importer le catalogue de cours de l'année
+   précédente, puis l'ajuster dans l'onglet d'édition.
+2. **Référentiel** → importer la liste M2, puis la liste M1 dès qu'elle est
+   stabilisée.
+3. **Année universitaire** → enregistrer la nouvelle année active.
+4. **Année universitaire** → exporter l'archive CSV de l'année écoulée, la
+   vérifier, puis la purger.
+
+L'année active est enregistrée dans le manifeste. Tant qu'elle ne l'est pas,
+elle est déduite de la date du jour et bascule seule au 1er septembre :
+l'interface le signale.
+
+## Scripts
+
+| Script | Usage |
+|---|---|
+| `scripts/sync_roster.py` | copie le référentiel entre le disque local et le bucket, dans les deux sens |
+| `scripts/export_legacy_roster.py` | convertit l'ancien `utils/courses.py` en CSV (migration v1 → v2, sans objet ensuite) |
+
+## Limites connues
+
+- Un étudiant sélectionne son nom dans une liste : rien ne l'empêche d'émarger
+  pour un camarade. Le QR code, affiché en séance et valable le temps de la
+  session, est la seule barrière.
+- La réservation des codes de cours ne porte que sur le catalogue de l'année
+  éditée. Conserver plusieurs années en base supposerait de l'étendre à
+  l'union des catalogues.
+- Les treize domaines de codes sont figés dans `roster/models.py` ; une famille
+  nouvelle demande une ligne de code.
+- `services/analytics.py` compte au dénominateur toutes les séances fermées des
+  cours retenus : un cours optionnel doit être exclu explicitement de la
+  sélection.
+
+## Licence
+
+MIT.
