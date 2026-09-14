@@ -17,5 +17,5 @@ venv/
 # Sauvegardes manuelles, remplacées par Git
 *.bak
 
-# Ancienne version, conservée en local uniquement
-old/
+# Autres fichiers
+intructions.txt

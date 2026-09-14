@@ -244,7 +244,16 @@ def render() -> None:
                 st.success("Session fermée.", icon="✅")
                 st.rerun()
 
-            base_url = get_settings().base_url or "http://localhost:8501"
+            configured_url = get_settings().base_url
+            if not configured_url:
+                st.error(
+                    "`base_url` est absent des secrets : le QR code ci-dessous "
+                    "pointe sur localhost et ne fonctionnera que sur cette "
+                    "machine. Cette clé doit être au premier niveau du fichier, "
+                    "avant toute section entre crochets.",
+                    icon="🚫",
+                )
+            base_url = configured_url or "http://localhost:8501"
             url = f"{base_url}/?session={session_id}&mode=student"
             st.image(_qr_png(url))
             st.caption("Les étudiants scannent ce code pour émarger.")
