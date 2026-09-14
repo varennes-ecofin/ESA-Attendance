@@ -21,6 +21,7 @@ from ..login import require_role
 from ..state import current_academic_year, get_repository, load_courses, load_students
 
 SESSION_KEY = "active_session_id"
+REPORT_KEY = "last_report"
 
 
 # ---------------------------------------------------------------------------
@@ -171,42 +172,126 @@ def _render_statistics(academic_year: str) -> None:
 # Page
 # ---------------------------------------------------------------------------
 
-def _render_actions(session_id: str, course_label: str) -> None:
-    """Render the export and e-mail actions for the running session."""
+def _close_and_report(session_id: str, course_label: str) -> dict:
+    """Close a session and send the attendance report to the registrar.
+
+    Sending is a consequence of closing rather than a separate button: in
+    practice nobody clicked the button, so the report was never sent. The
+    records are read before closing and kept in the returned payload, so a
+    failed send can still be downloaded or retried.
+
+    Args:
+        session_id: Session being closed.
+        course_label: Course name shown in the message.
+
+    Returns:
+        A payload describing what happened, stored in the session state.
+    """
     repository = get_repository("service")
     records = repository.session_records(session_id)
+    repository.close_session(session_id)
+
+    payload: dict = {
+        "session_id": session_id,
+        "course_label": course_label,
+        "date": datetime.now().strftime("%d/%m/%Y"),
+        "records": records,
+        "sent_to": [],
+        "error": "",
+    }
+
+    if not records:
+        payload["error"] = "Aucun émargement : rien n'a été envoyé."
+        return payload
+
+    settings = get_settings()
+    if settings.email is None:
+        payload["error"] = "Aucune configuration SMTP dans les secrets."
+        return payload
+
+    try:
+        payload["sent_to"] = send_attendance_report(
+            settings.email, course_label, payload["date"], records
+        )
+    except MailError as exc:
+        payload["error"] = str(exc)
+
+    return payload
+
+
+def _render_report_panel() -> None:
+    """Render the outcome of the last closed session."""
+    payload = st.session_state.get(REPORT_KEY)
+    if not isinstance(payload, dict):
+        return
+
+    records = payload.get("records") or []
+    st.markdown(f"#### Séance close — {payload['course_label']}")
+
+    if payload["sent_to"]:
+        st.success(
+            f"{len(records)} présences envoyées à {', '.join(payload['sent_to'])}.",
+            icon="✅",
+        )
+    elif payload["error"]:
+        st.error(payload["error"], icon="🚫")
+
+    if records:
+        csv = pd.DataFrame(records).to_csv(index=False).encode("utf-8-sig")
+        left, right = st.columns(2)
+        with left:
+            st.download_button(
+                "💾 Télécharger le CSV",
+                data=csv,
+                file_name=f"presences_{payload['session_id']}.csv",
+                mime="text/csv",
+                key="download_closed",
+            )
+        with right:
+            if payload["error"] and st.button("📧 Réessayer l'envoi"):
+                settings = get_settings()
+                if settings.email is None:
+                    st.error("Aucune configuration SMTP dans les secrets.", icon="🚫")
+                else:
+                    try:
+                        payload["sent_to"] = send_attendance_report(
+                            settings.email,
+                            payload["course_label"],
+                            payload["date"],
+                            records,
+                        )
+                        payload["error"] = ""
+                    except MailError as exc:
+                        payload["error"] = str(exc)
+                    st.session_state[REPORT_KEY] = payload
+                    st.rerun()
+
+    if st.button("Masquer ce récapitulatif", key="dismiss_report"):
+        st.session_state.pop(REPORT_KEY, None)
+        st.rerun()
+
+    st.markdown("---")
+
+
+def _render_actions(session_id: str) -> None:
+    """Render the export action available while the session is running."""
+    records = get_repository("service").session_records(session_id)
     if not records:
         return
 
     st.markdown("---")
-    left, right = st.columns(2)
-
-    with left:
-        csv = pd.DataFrame(records).to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "💾 Télécharger le CSV",
-            data=csv,
-            file_name=f"presences_{session_id}.csv",
-            mime="text/csv",
-        )
-
-    with right:
-        if st.button("📧 Envoyer au secrétariat"):
-            settings = get_settings()
-            if settings.email is None:
-                st.error("Aucune configuration SMTP dans les secrets.", icon="🚫")
-                return
-            try:
-                targets = send_attendance_report(
-                    settings.email,
-                    course_label,
-                    datetime.now().strftime("%d/%m/%Y"),
-                    records,
-                )
-            except MailError as exc:
-                st.error(str(exc), icon="🚫")
-            else:
-                st.success(f"Envoyé à {', '.join(targets)}.", icon="✅")
+    csv = pd.DataFrame(records).to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "💾 Télécharger le CSV",
+        data=csv,
+        file_name=f"presences_{session_id}.csv",
+        mime="text/csv",
+        key="download_live",
+    )
+    st.caption(
+        "La feuille de présence est envoyée au secrétariat à la fermeture de "
+        "la séance."
+    )
 
 
 def render() -> None:
@@ -238,10 +323,14 @@ def render() -> None:
                 st.rerun()
             st.info("Ouvrez une session pour afficher le QR code.")
         else:
-            if st.button("🔴 Fermer la session", width="stretch"):
-                get_repository("service").close_session(session_id)
+            if st.button(
+                "🔴 Fermer la séance et envoyer", type="primary", width="stretch"
+            ):
+                with st.spinner("Fermeture et envoi…"):
+                    st.session_state[REPORT_KEY] = _close_and_report(
+                        session_id, course_label
+                    )
                 st.session_state.pop(SESSION_KEY, None)
-                st.success("Session fermée.", icon="✅")
                 st.rerun()
 
             configured_url = get_settings().base_url
@@ -262,7 +351,8 @@ def render() -> None:
     with right:
         st.subheader("Émargements en direct")
         if session_id is None:
+            _render_report_panel()
             _render_statistics(academic_year)
         else:
             _live_attendance(session_id, enrolled)
-            _render_actions(session_id, course_label)
+            _render_actions(session_id)
