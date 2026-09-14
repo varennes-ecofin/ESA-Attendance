@@ -30,22 +30,52 @@ REPORT_KEY = "last_report"
 
 @st.fragment(run_every=5)
 def _live_attendance(session_id: str, expected: int) -> None:
-    """Render the attendance list, re-running every five seconds.
+    """Render the attendance list and its export, re-running every five seconds.
+
+    The download button lives inside the fragment on purpose. Placed after it,
+    it would be drawn once during the full script run -- when nobody has checked
+    in yet -- and never redrawn, since a fragment rerun does not re-evaluate the
+    code around it.
 
     Args:
         session_id: Session being followed.
         expected: Number of enrolled students, used for the progress bar.
     """
-    frame = get_repository("service").session_attendance_frame(session_id)
+    records = get_repository("service").session_records(session_id)
 
-    if frame.empty:
+    if not records:
         st.info("En attente des premiers émargements…", icon="⏳")
         return
 
+    frame = pd.DataFrame(
+        [
+            {
+                "Étudiant": record["student_name"],
+                "Heure": datetime.fromisoformat(
+                    record["checked_in_at"].replace("Z", "+00:00")
+                )
+                .astimezone()
+                .strftime("%H:%M:%S"),
+            }
+            for record in records
+        ]
+    )
     st.dataframe(frame, hide_index=True, width="stretch")
-    ratio = min(len(frame) / expected, 1.0) if expected else 0.0
+
+    ratio = min(len(records) / expected, 1.0) if expected else 0.0
     st.progress(ratio)
-    st.caption(f"{len(frame)} / {expected} étudiants présents ({ratio:.0%})")
+    st.caption(f"{len(records)} / {expected} étudiants présents ({ratio:.0%})")
+
+    st.download_button(
+        "💾 Télécharger le CSV",
+        data=pd.DataFrame(records).to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"presences_{session_id}.csv",
+        mime="text/csv",
+        key="download_live",
+    )
+    st.caption(
+        "La feuille de présence est envoyée au secrétariat à la fermeture de la séance."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -273,27 +303,6 @@ def _render_report_panel() -> None:
     st.markdown("---")
 
 
-def _render_actions(session_id: str) -> None:
-    """Render the export action available while the session is running."""
-    records = get_repository("service").session_records(session_id)
-    if not records:
-        return
-
-    st.markdown("---")
-    csv = pd.DataFrame(records).to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "💾 Télécharger le CSV",
-        data=csv,
-        file_name=f"presences_{session_id}.csv",
-        mime="text/csv",
-        key="download_live",
-    )
-    st.caption(
-        "La feuille de présence est envoyée au secrétariat à la fermeture de "
-        "la séance."
-    )
-
-
 def render() -> None:
     """Render the teacher dashboard."""
     user = require_role()
@@ -355,4 +364,3 @@ def render() -> None:
             _render_statistics(academic_year)
         else:
             _live_attendance(session_id, enrolled)
-            _render_actions(session_id)
